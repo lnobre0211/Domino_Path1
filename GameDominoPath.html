@@ -1,0 +1,1999 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Domino Path</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #111827; color: #e5e7eb;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; padding: 12px; gap: 10px;
+}
+h1 { font-size: 1.1rem; letter-spacing: 4px; color: #93c5fd; font-weight: 300; }
+#layout { display: flex; gap: 12px; align-items: flex-start; }
+
+/* ── STATS ── */
+#stats {
+  background: #1f2937; border-radius: 10px; padding: 12px 10px;
+  display: flex; flex-direction: column; gap: 14px;
+  min-width: 100px; border: 1px solid #374151;
+}
+.stat { text-align: center; }
+.stat-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; }
+.stat-val { font-size: 1.5rem; font-weight: bold; color: #93c5fd; line-height: 1.2; }
+#deck-bar-wrap, #boss-bar-wrap {
+  background: #374151; border-radius: 4px; height: 6px;
+  width: 100%; margin-top: 4px; overflow: hidden;
+}
+#deck-bar-fill { height: 100%; background: #3b82f6; transition: width 0.3s; }
+#boss-bar-fill { height: 100%; background: #ef4444; transition: width 0.3s; }
+.last-num-display { font-size: 2rem; font-weight: 900; color: #fbbf24; }
+#boss-stat { border-top: 1px solid #374151; padding-top: 10px; }
+.boss-stat-val { font-size: 1.1rem; color: #fca5a5; }
+
+/* ── GRID ── */
+#game-col { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+#grid {
+  display: grid; grid-template-columns: repeat(10, 46px);
+  grid-template-rows: repeat(10, 50px); gap: 2px;
+  background: #1f2937; padding: 4px; border-radius: 8px; border: 1px solid #374151;
+}
+.cell {
+  background: #111827; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; transition: background 0.15s;
+}
+.cell.goal-row { background: #0c1a0e; }
+.cell.player   { box-shadow: 0 0 0 2px #93c5fd; background: #1e3a5f; }
+.cell.occupied { background: #1a2e4a; }
+.cell.boss-cell {
+  background: #2d0d0d; box-shadow: 0 0 0 2px #ef4444;
+  animation: boss-pulse 1.5s ease-in-out infinite;
+}
+@keyframes boss-pulse {
+  0%,100% { box-shadow: 0 0 0 2px #ef4444; }
+  50%      { box-shadow: 0 0 0 3px #dc2626, 0 0 8px #ef4444; }
+}
+.cell.enemy-cell {
+  background: #1a1400; box-shadow: 0 0 0 2px #ca8a04;
+  animation: enemy-pulse 2s ease-in-out infinite;
+}
+@keyframes enemy-pulse {
+  0%,100% { box-shadow: 0 0 0 2px #ca8a04; }
+  50%      { box-shadow: 0 0 0 3px #a16207, 0 0 6px #ca8a04; }
+}
+.cell.degraded-cell { filter: sepia(0.4) brightness(0.85); }
+.cell.replenish-tile { background: #0a1f0a !important; }
+.cell.bucha-gate     { background: #140a2a !important; box-shadow: 0 0 0 1px #7c3aed; }
+.cell.modifier-tile  { background: #140a1f !important; box-shadow: 0 0 0 1px #a21caf; }
+/* ── DARK MAP & OBSTACLES ── */
+.cell.hidden-tile { background: #090d14 !important; }
+.cell.obstacle-solid { background: #2a1515 !important; box-shadow: 0 0 0 2px #7f1d1d !important; }
+.cell.obstacle-req   { background: #161828 !important; box-shadow: 0 0 0 2px #4c1d95 !important; }
+.dot { width: 4px; height: 4px; border-radius: 50%; background: #374151; }
+.player-marker { width: 12px; height: 12px; border-radius: 50%; background: #93c5fd; box-shadow: 0 0 6px #93c5fd; }
+.boss-marker  { font-size: 1.3rem; line-height: 1; user-select: none; }
+.enemy-marker { font-size: 1rem;   line-height: 1; user-select: none; }
+
+/* ── DOMINO ── */
+.dom-v { display: flex; flex-direction: column; border: 1.5px solid #3b82f6; border-radius: 6px; overflow: hidden; background: #0f172a; }
+.dom-h { display: flex; flex-direction: row;    border: 1.5px solid #3b82f6; border-radius: 6px; overflow: hidden; background: #0f172a; }
+.dom-v.sm { width: 26px; height: 44px; } .dom-h.sm { width: 40px; height: 22px; }
+.dom-v.lg { width: 38px; height: 60px; } .dom-h.lg { width: 60px; height: 36px; }
+.dom-v.xl { width: 46px; height: 72px; } .dom-h.xl { width: 72px; height: 42px; }
+.dom-v.degraded, .dom-h.degraded { border-color: #f59e0b; background: #1c1000; }
+.dom-v.mult, .dom-h.mult { border-color: #a78bfa !important; background: #160d2a; }
+.dh { width: 100%; height: 1.5px; background: #3b82f6; flex-shrink: 0; }
+.dv { height: 100%; width: 1.5px; background: #3b82f6; flex-shrink: 0; }
+.dom-v.degraded .dh, .dom-h.degraded .dv { background: #f59e0b; }
+.dom-v.mult .dh, .dom-h.mult .dv { background: #a78bfa !important; }
+.dn { flex: 1; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #e2e8f0; }
+.dom-v.sm .dn { font-size: 0.75rem; } .dom-h.sm .dn { font-size: 0.65rem; }
+.dom-v.lg .dn { font-size: 1.1rem;  } .dom-h.lg .dn { font-size: 0.9rem; }
+.dom-v.xl .dn { font-size: 1.3rem;  } .dom-h.xl .dn { font-size: 1.1rem; }
+
+/* ── HAND ── */
+#hand-section { display: flex; flex-direction: column; gap: 6px; align-items: center; width: 100%; }
+#msg { font-size: 0.75rem; color: #f59e0b; min-height: 16px; text-align: center; max-width: 460px; }
+#hand { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.hpiece {
+  padding: 6px; border-radius: 8px; border: 2px solid transparent;
+  background: #1f2937; cursor: pointer; transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.hpiece:hover            { border-color: #4b5563; }
+.hpiece.selected         { border-color: #93c5fd; background: #1e3a5f; }
+.hpiece.invalid          { opacity: 0.3; cursor: default; }
+.hpiece.toggle-on        { border-color: #f59e0b; background: #3a2500; }
+.hpiece.combat-pick:hover{ border-color: #ef4444; background: #2d0d0d; }
+.hpiece.attacking        { border-color: #22d3ee; background: #082f49; cursor: default; box-shadow: 0 0 8px #22d3ee55; }
+.hpiece.blocking         { border-color: #22c55e; background: #0d2d15; box-shadow: 0 0 8px #22c55e55; }
+.hpiece.targeted         { border-color: #ef4444; background: #2d0d0d; animation: tgt 1s ease-in-out infinite; }
+@keyframes tgt { 0%,100%{border-color:#ef4444;} 50%{border-color:#fca5a5;box-shadow:0 0 6px #ef4444;} }
+.hpiece.pick-hover:hover { border-color: #9ca3af; }
+.hpiece.block-sel { border-color: #4ade80; background: #0d2d15; box-shadow: 0 0 8px #4ade8055; }
+.hpiece.fuse-a { border-color: #f59e0b !important; background: #3a2500 !important; }
+.hpiece.fuse-b { border-color: #22d3ee !important; background: #082f49 !important; }
+
+/* ── DECK VIEWER ── */
+#deck-viewer {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.8); z-index: 100;
+  align-items: flex-start; justify-content: center; padding-top: 40px;
+}
+#deck-viewer.open { display: flex; }
+#deck-viewer-box {
+  background: #1f2937; border: 1px solid #374151; border-radius: 12px;
+  padding: 14px 16px; width: 520px; max-height: 75vh;
+  display: flex; flex-direction: column; gap: 8px;
+}
+#deck-viewer-header {
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid #374151; padding-bottom: 6px;
+}
+#deck-viewer-title { font-size: 0.75rem; color: #93c5fd; text-transform: uppercase; letter-spacing: 2px; }
+#deck-viewer-count { font-size: 0.7rem; color: #6b7280; }
+#deck-viewer-close {
+  cursor: pointer; color: #6b7280; font-size: 1.1rem; line-height: 1;
+  padding: 2px 6px; border-radius: 4px;
+}
+#deck-viewer-close:hover { color: #e5e7eb; background: #374151; }
+#deck-viewer-pieces { display: flex; flex-wrap: wrap; gap: 5px; overflow-y: auto; padding: 4px 0; }
+.deck-stat-clickable { cursor: pointer; }
+.deck-stat-clickable:hover .stat-label { color: #93c5fd; }
+.deck-stat-clickable:hover .stat-val   { color: #bfdbfe; }
+
+/* ── OVERLAY ── */
+#overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.87); z-index: 200;
+  align-items: center; justify-content: center;
+}
+#overlay.open { display: flex; }
+#overlay-box {
+  background: #1f2937; border: 1px solid #4b5563; border-radius: 12px;
+  padding: 20px; width: 540px; max-width: 96vw; max-height: 88vh;
+  overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+}
+#overlay-title {
+  font-size: 0.95rem; color: #c4b5fd; font-weight: bold;
+  text-align: center; border-bottom: 1px solid #374151; padding-bottom: 8px;
+}
+#overlay-desc { font-size: 0.78rem; color: #d1d5db; text-align: center; }
+#overlay-counter { font-size: 0.72rem; color: #f59e0b; text-align: center; }
+#overlay-pieces { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 4px 0; }
+#overlay-footer { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.ov-piece {
+  padding: 6px; border-radius: 8px; border: 2px solid transparent;
+  background: #111827; cursor: pointer; transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.ov-piece:hover     { border-color: #4b5563; }
+.ov-piece.ov-sel    { border-color: #a78bfa; background: #2d1b4e; }
+.ov-piece.ov-dim    { opacity: 0.35; cursor: default; }
+
+/* ── ROT BAR / CTRL ── */
+#rot-bar { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
+#ctrl-bar { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+button {
+  padding: 5px 12px; border-radius: 6px; border: 1px solid #374151;
+  background: #1f2937; color: #93c5fd; cursor: pointer; font-size: 0.78rem; transition: all 0.15s;
+}
+button:hover:not(:disabled) { background: #2d3f55; border-color: #4b5563; }
+button.active { background: #1e3a5f; border-color: #93c5fd; }
+button.ok   { border-color: #22c55e; color: #22c55e; }
+button.ok:hover:not(:disabled)   { background: #0d2d15; }
+button.bad  { border-color: #ef4444; color: #ef4444; }
+button.bad:hover:not(:disabled)  { background: #2d0d0d; }
+button.warn { border-color: #f59e0b; color: #f59e0b; }
+button.warn:hover:not(:disabled) { background: #2d1d00; }
+button:disabled { opacity: 0.35; cursor: default; }
+.phase-note { font-size: 0.72rem; color: #f59e0b; font-style: italic; text-align: center; width: 100%; }
+.phase-note.info   { color: #93c5fd; font-style: normal; }
+.phase-note.shield { color: #86efac; font-style: normal; }
+.phase-note.danger { color: #fca5a5; font-style: normal; }
+.act-end-banner  { font-size: 1rem; color: #22c55e; font-weight: bold; text-align: center; width: 100%; }
+.game-over-banner{ font-size: 1rem; color: #ef4444; font-weight: bold; text-align: center; width: 100%; }
+
+/* ── LOG PANEL ── */
+#log-col {
+  background: #1f2937; border-radius: 10px; padding: 10px 8px;
+  display: flex; flex-direction: column; gap: 8px;
+  width: 156px; border: 1px solid #374151; align-self: flex-start;
+}
+.log-title {
+  font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px;
+  color: #6b7280; text-align: center; border-bottom: 1px solid #374151; padding-bottom: 4px;
+}
+#last-piece-wrap { display: flex; justify-content: center; align-items: center; min-height: 52px; }
+#boss-preview-box {
+  background: #2d0d0d; border: 1px solid #7f1d1d; border-radius: 6px;
+  padding: 5px 6px; display: none; flex-direction: column; gap: 3px;
+}
+#boss-preview-box.visible { display: flex; }
+#boss-preview-name { font-size: 0.72rem; color: #fca5a5; font-weight: bold; }
+#boss-preview-detail { font-size: 0.64rem; color: #f87171; }
+#combo-box {
+  background: #0d1f0d; border: 1px solid #166534; border-radius: 6px;
+  padding: 5px 6px; display: none; flex-direction: column; gap: 2px;
+}
+#combo-box.visible { display: flex; }
+#combo-link-line  { font-size: 0.7rem; color: #86efac; font-weight: bold; }
+#combo-win-line   { font-size: 0.64rem; color: #4ade80; }
+#combat-log-entries { display: flex; flex-direction: column; gap: 3px; max-height: 280px; overflow-y: auto; }
+.log-entry { font-size: 0.64rem; color: #9ca3af; line-height: 1.35; padding: 3px 5px; border-radius: 3px; background: #111827; }
+.log-entry.fresh  { color: #e5e7eb; background: #1a2e4a; }
+.log-entry.threat { color: #fca5a5; background: #2d0d0d; }
+.log-entry.shield { color: #86efac; background: #0d1f0d; }
+
+/* ── TUTORIAL TOAST ── */
+#tutorial-modal {
+  display: none; position: fixed; bottom: 24px; right: 24px;
+  background: #1e293b; border: 1px solid #3b82f6; border-radius: 12px;
+  padding: 14px 16px; width: 290px; z-index: 500;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+  flex-direction: column; gap: 10px;
+}
+#tutorial-modal.open { display: flex; }
+#tutorial-header {
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid #334155; padding-bottom: 6px;
+}
+#tutorial-title { font-size: 0.8rem; color: #93c5fd; font-weight: bold; letter-spacing: 1px; }
+#tutorial-step  { font-size: 0.65rem; color: #4b5563; }
+#tutorial-text  { font-size: 0.75rem; color: #cbd5e1; line-height: 1.55; white-space: pre-line; }
+#tutorial-ok {
+  align-self: flex-end; padding: 4px 14px; border-radius: 6px;
+  border: 1px solid #3b82f6; background: #1e3a5f; color: #93c5fd;
+  cursor: pointer; font-size: 0.75rem;
+}
+#tutorial-ok:hover { background: #2d4f7c; }
+
+/* ── MOBILE ── */
+@media (max-width: 600px) {
+  body { padding: 8px 4px; gap: 6px; }
+  h1 { font-size: 0.85rem; letter-spacing: 2px; }
+
+  #layout { flex-direction: column; align-items: center; gap: 6px; }
+
+  #stats {
+    flex-direction: row; flex-wrap: wrap; justify-content: center;
+    min-width: unset; width: 100%; gap: 8px; padding: 8px;
+  }
+  .stat { min-width: 60px; }
+  #boss-stat { border-top: none; border-left: 1px solid #374151; padding-top: 0; padding-left: 10px; }
+
+  #grid {
+    grid-template-columns: repeat(10, 33px);
+    grid-template-rows: repeat(10, 36px);
+  }
+  .player-marker { width: 10px; height: 10px; }
+  .boss-marker  { font-size: 1.1rem; }
+  .enemy-marker { font-size: 0.85rem; }
+
+  #log-col {
+    width: 100%; flex-direction: row; flex-wrap: wrap; gap: 6px;
+  }
+  #combat-log-entries { max-height: 80px; flex: 1 1 100%; }
+  #last-piece-wrap { min-height: unset; }
+
+  button { min-height: 38px; padding: 7px 14px; font-size: 0.82rem; }
+  .hpiece { padding: 8px; }
+
+  #tutorial-modal { bottom: 10px; right: 10px; left: 10px; width: auto; }
+
+  #deck-viewer-box { width: 96vw; }
+  #overlay-box { padding: 14px; }
+}
+</style>
+</head>
+<body>
+<h1>DOMINO PATH</h1>
+<div id="layout">
+  <div id="stats">
+    <div class="stat"><div class="stat-label">Ato</div><div class="stat-val" id="s-act">1</div></div>
+    <div class="stat deck-stat-clickable" onclick="showDeckViewer()" title="Clique para ver o deck">
+      <div class="stat-label">Deck 🔍</div><div class="stat-val" id="s-deck">21</div>
+      <div id="deck-bar-wrap"><div id="deck-bar-fill"></div></div>
+    </div>
+    <div class="stat"><div class="stat-label">Descarte</div><div class="stat-val" id="s-disc">5</div></div>
+    <div class="stat"><div class="stat-label">Último</div><div class="stat-val last-num-display" id="s-last">-</div></div>
+    <div class="stat" id="boss-stat" style="display:none">
+      <div class="stat-label" style="color:#ef4444" id="s-enemy-label">Inimigo HP</div>
+      <div class="boss-stat-val" id="s-boss-hp">0/0</div>
+      <div id="boss-bar-wrap"><div id="boss-bar-fill"></div></div>
+      <div class="stat-label" style="margin-top:4px">Rodada</div>
+      <div class="boss-stat-val" id="s-round">1</div>
+    </div>
+  </div>
+
+  <div id="game-col">
+    <div id="grid"></div>
+    <div id="hand-section">
+      <div id="msg"></div>
+      <div id="hand"></div>
+      <div id="rot-bar"></div>
+      <div id="ctrl-bar"></div>
+    </div>
+  </div>
+
+  <!-- Deck Viewer Modal -->
+  <div id="deck-viewer" onclick="if(event.target===this)hideDeckViewer()">
+    <div id="deck-viewer-box">
+      <div id="deck-viewer-header">
+        <span id="deck-viewer-title">Deck</span>
+        <span id="deck-viewer-count"></span>
+        <span id="deck-viewer-close" onclick="hideDeckViewer()">✕</span>
+      </div>
+      <div id="deck-viewer-pieces"></div>
+    </div>
+  </div>
+
+  <!-- Overlay Modal -->
+  <div id="overlay">
+    <div id="overlay-box">
+      <div id="overlay-title"></div>
+      <div id="overlay-desc"></div>
+      <div id="overlay-counter"></div>
+      <div id="overlay-pieces"></div>
+      <div id="overlay-footer"></div>
+    </div>
+  </div>
+
+  <div id="log-col">
+    <div class="log-title">Última Jogada</div>
+    <div id="last-piece-wrap"></div>
+    <div class="log-title" id="boss-prev-title" style="display:none">Próx. Ataque</div>
+    <div id="boss-preview-box">
+      <div id="boss-preview-name"></div>
+      <div id="boss-preview-detail"></div>
+    </div>
+    <div class="log-title">Combo</div>
+    <div id="combo-box">
+      <div id="combo-link-line"></div>
+      <div id="combo-win-line"></div>
+    </div>
+    <div class="log-title">Log</div>
+    <div id="combat-log-entries"></div>
+  </div>
+</div>
+
+<!-- Tutorial Toast -->
+<div id="tutorial-modal">
+  <div id="tutorial-header">
+    <span id="tutorial-title">Dica</span>
+    <span id="tutorial-step"></span>
+  </div>
+  <div id="tutorial-text"></div>
+  <button id="tutorial-ok" onclick="closeTutorial()">Entendi ✓</button>
+</div>
+
+<script>
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
+const ENEMY_DEGRADE_CHANCE = 0.20;
+
+const ENEMIES = {
+  1: {
+    normal: [
+      { id: 'slime',    name: 'Gosma',     hp: 18, weight: 3 },
+      { id: 'goblin',   name: 'Goblin',    hp: 22, weight: 2 },
+    ],
+    elite: [
+      { id: 'troll',    name: 'Troll',     hp: 30, weight: 2 },
+      { id: 'ogre',     name: 'Ogre',      hp: 38, weight: 1 },
+    ],
+    boss: { id: 'boss1', name: 'Rei das Gosmas', hp: 45 },
+  },
+  2: {
+    normal: [
+      { id: 'wolf',     name: 'Lobo',      hp: 26, weight: 3 },
+      { id: 'skeleton', name: 'Esqueleto', hp: 28, weight: 2 },
+    ],
+    elite: [
+      { id: 'golem',    name: 'Golem',     hp: 40, weight: 2 },
+      { id: 'witch',    name: 'Bruxa',     hp: 35, weight: 1 },
+    ],
+    boss: { id: 'boss2', name: 'Lorde Sombrio', hp: 55 },
+  },
+};
+
+function getActPool(act) { return ENEMIES[act] || ENEMIES[2]; }
+
+function chebyshev(a, b) {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
+function getEnemyEmoji(id) {
+  const map = { slime:'🟢', goblin:'👺', troll:'🧌', ogre:'🦍', wolf:'🐺', skeleton:'💀', golem:'🗿', witch:'🧙' };
+  return map[id] || '👿';
+}
+
+// ── TUTORIAL ──────────────────────────────────────────────────────────────────
+const TUTORIAL_TEXTS = {
+  1: {
+    title: 'Como jogar',
+    text: 'Coloque uma peça do dominó no tile à frente. A extremidade que toca o tile anterior deve ter o mesmo número da última peça jogada.\n\nSe necessário, rotacione a peça para conectar pelo outro lado.',
+  },
+  2: {
+    title: 'Mulligan & Descarte',
+    text: 'Mulligan — use uma vez por ato. Descarte quantas peças quiser e compra a mesma quantidade. As descartadas voltam ao deck.\n\nDescarte — você tem 5 tokens. Descarte até 4 peças e compra a mesma quantidade. As descartadas são perdidas.',
+  },
+  3: {
+    title: 'Radar',
+    text: 'Cada peça jogada revela tiles ao redor. O número de tiles revelados é igual à extremidade livre da peça jogada.\n\nA revelação começa à frente e segue em espiral horária.',
+  },
+  4: {
+    title: 'Combate',
+    text: 'A peça usada para chegar aqui causa o primeiro dano. Continue jogando peças conectando pela extremidade livre — dano acumulado. Se não conseguir conectar, jogue qualquer peça como ataque livre.\n\nApós cada peça sua, o inimigo contra-ataca devorando peças do seu deck.',
+  },
+  5: {
+    title: 'Combo Link',
+    text: 'Você formou um combo link. Ao jogar em combate uma peça com o número da última bucha, o bônus acumulado é somado ao dano.\n\nO link é consumido após ativar.',
+  },
+};
+
+let tutorialQueue = [];
+let tutorialShownThisSession = new Set();
+
+function queueTutorial(step) {
+  if (tutorialShownThisSession.has(step)) return;
+  tutorialShownThisSession.add(step);
+  tutorialQueue.push(step);
+  if (tutorialQueue.length === 1) showNextTutorial();
+}
+
+function showNextTutorial() {
+  if (tutorialQueue.length === 0) return;
+  const step = tutorialQueue[0];
+  const t = TUTORIAL_TEXTS[step];
+  document.getElementById('tutorial-title').textContent = t.title;
+  document.getElementById('tutorial-step').textContent  = `${step}/5`;
+  document.getElementById('tutorial-text').textContent  = t.text;
+  document.getElementById('tutorial-modal').classList.add('open');
+}
+
+function closeTutorial() {
+  document.getElementById('tutorial-modal').classList.remove('open');
+  tutorialQueue.shift();
+  if (tutorialQueue.length > 0) setTimeout(showNextTutorial, 200);
+}
+
+// ── MODEL ─────────────────────────────────────────────────────────────────────
+let G = {};
+
+// ── PIECE VALUE ───────────────────────────────────────────────────────────────
+function pieceValue(piece) {
+  return piece.isMultiplier
+    ? piece.values[0] * piece.values[1]
+    : piece.values[0] + piece.values[1];
+}
+
+// ── DRAFT GENERATOR ───────────────────────────────────────────────────────────
+function generateDraft(n) {
+  const pool = [];
+  for (let a = 0; a <= 6; a++)
+    for (let b = a; b <= 6; b++)
+      pool.push({ values: [a, b], degraded: false, isMultiplier: false });
+  shuffle(pool);
+  return pool.slice(0, n).map(p => ({ values: [...p.values], degraded: false, isMultiplier: false }));
+}
+
+// ── DOOR REWARD POOL ──────────────────────────────────────────────────────────
+function drawDoorReward() {
+  if (G.doorRewardPool.length === 0)
+    G.doorRewardPool = shuffle_ret(['restock', 'buff', 'mult']);
+  return G.doorRewardPool.pop();
+}
+
+// ── GRID PLACEMENT HELPERS ────────────────────────────────────────────────────
+function randomFreePosInRange(yMin, yMax, occupied) {
+  const opts = [];
+  for (let y = yMin; y <= yMax; y++)
+    for (let x = 0; x < 10; x++)
+      if (!occupied.has(`${x},${y}`)) opts.push({ x, y });
+  if (!opts.length) return null;
+  return opts[Math.floor(Math.random() * opts.length)];
+}
+
+function placeReplenishTiles(occupied) {
+  const candidates = [];
+  for (let y = 2; y <= 8; y++)
+    for (let x = 0; x < 10; x++)
+      if (!occupied.has(`${x},${y}`)) candidates.push({ x, y });
+  shuffle(candidates);
+  for (let i = 0; i < candidates.length; i++) {
+    const r1 = candidates[i];
+    for (let j = i + 1; j < candidates.length; j++) {
+      const r2 = candidates[j];
+      const dx = Math.abs(r1.x - r2.x);
+      const dy = Math.abs(r1.y - r2.y);
+      if (dx >= 3 && dy >= 2 && dy <= 4) return [r1, r2];
+    }
+  }
+  return candidates.length >= 2 ? [candidates[0], candidates[1]] : candidates.slice(0, candidates.length);
+}
+
+// ── OBSTACLE HELPERS ──────────────────────────────────────────────────────────
+function validateObstaclePlacement(obstacles) {
+  const obstacleSet = new Set(obstacles.map(o => `${o.x},${o.y}`));
+  for (let y = 1; y < 10; y++) {
+    for (let x = 0; x < 10; x++) {
+      if (obstacleSet.has(`${x},${y}`)) continue;
+      const up    = y > 0 && !obstacleSet.has(`${x},${y - 1}`);
+      const right = !obstacleSet.has(`${(x + 1) % 10},${y}`);
+      const left  = !obstacleSet.has(`${(x + 9) % 10},${y}`);
+      if (!up && !right && !left) return false;
+    }
+  }
+  return true;
+}
+
+function generateObstacles(occupied) {
+  const result = [];
+  const candidates = [];
+  for (let y = 3; y <= 7; y++)
+    for (let x = 0; x < 10; x++)
+      if (!occupied.has(`${x},${y}`)) candidates.push({ x, y });
+  shuffle(candidates);
+  const target = 3 + Math.floor(Math.random() * 4);
+  for (const pos of candidates) {
+    if (result.length >= target) break;
+    const type = Math.random() < 0.5 ? 'solid' : 'req';
+    const obs = { x: pos.x, y: pos.y, type, reqNum: type === 'req' ? 1 + Math.floor(Math.random() * 6) : 0 };
+    if (validateObstaclePlacement([...result, obs])) {
+      result.push(obs);
+      occupied.add(`${pos.x},${pos.y}`);
+    }
+  }
+  return result;
+}
+
+// ── ACT INITIALIZER ───────────────────────────────────────────────────────────
+function initAct() {
+  const occupied = new Set([`${G.pos.x},${G.pos.y}`]);
+
+  // Boss at row 1
+  const pool = getActPool(G.act);
+  const bt = pool.boss;
+  const bossX = Math.floor(Math.random() * 10);
+  const bossY = 1;
+  occupied.add(`${bossX},${bossY}`);
+  const bossEnemy = { id: bt.id, name: bt.name, hp: bt.hp, maxHp: bt.hp, isBoss: true, pos: { x: bossX, y: bossY } };
+
+  // 2 replenish tiles
+  const replenishTiles = placeReplenishTiles(occupied);
+  replenishTiles.forEach(r => occupied.add(`${r.x},${r.y}`));
+
+  // 1-2 gate tiles
+  const numGates = 1 + Math.floor(Math.random() * 2);
+  const gateTiles = [];
+  for (let i = 0; i < numGates; i++) {
+    const pos = randomFreePosInRange(2, 8, occupied);
+    if (pos) {
+      const requiredDouble = 1 + Math.floor(Math.random() * 6);
+      gateTiles.push({ x: pos.x, y: pos.y, requiredDouble });
+      occupied.add(`${pos.x},${pos.y}`);
+    }
+  }
+
+  // Available tiles for enemies
+  const available = [];
+  for (let y = 2; y < 9; y++)
+    for (let x = 0; x < 10; x++)
+      if (!occupied.has(`${x},${y}`)) available.push({ x, y });
+  shuffle(available);
+
+  // Enemies ~20%, chebyshev >= 3 between each other
+  const enemies = [bossEnemy];
+  const placed  = [{ x: bossX, y: bossY }];
+  G.combatsCompletedThisAct = 0;
+  const enemyCount = Math.floor(available.length * 0.20);
+  for (const candidate of available) {
+    if (enemies.length - 1 >= enemyCount) break;
+    if (placed.every(p => chebyshev(candidate, p) >= 3)) {
+      const tmpl = pickEnemy(G.act);
+      enemies.push({ ...tmpl, pos: { x: candidate.x, y: candidate.y } });
+      placed.push(candidate);
+      occupied.add(`${candidate.x},${candidate.y}`);
+    }
+  }
+
+  // Modifier tiles ~15%
+  const remaining = [];
+  for (let y = 2; y < 9; y++)
+    for (let x = 0; x < 10; x++)
+      if (!occupied.has(`${x},${y}`)) remaining.push({ x, y });
+  shuffle(remaining);
+  const modCount  = Math.max(3, Math.floor(remaining.length * 0.15));
+  const modifiers = remaining.slice(0, modCount).map(p => ({ x: p.x, y: p.y }));
+  modifiers.forEach(m => occupied.add(`${m.x},${m.y}`));
+
+  G.enemies    = enemies;
+  G.mapFeatures = { replenish: replenishTiles, buchaGates: gateTiles, modifiers };
+
+  // Obstacles
+  G.obstacles = generateObstacles(occupied);
+
+  // Initialize revealed set
+  G.revealed = new Set();
+  G.revealed.add(`${G.pos.x},${G.pos.y}`);
+  replenishTiles.forEach(r => G.revealed.add(`${r.x},${r.y}`));
+  gateTiles.forEach(g => G.revealed.add(`${g.x},${g.y}`));
+  // Boss always visible
+  G.revealed.add(`${bossX},${bossY}`);
+  // Goal row always visible
+  for (let x = 0; x < 10; x++) G.revealed.add(`${x},0`);
+
+  // Reset counters
+  G.emptyTileStreak    = 0;
+  G.forcedObstacleNext = false;
+  G.revealWindowCount  = 0;
+  G.revealWindowNonNeutral = 0;
+}
+
+function initGame() {
+  const deck = makeDeck(); shuffle(deck);
+  G = {
+    deck, hand: drawPieces(deck, 7), path: {},
+    pos: { x: 5, y: 9 },
+    last: Math.floor(Math.random() * 7),
+    used: [], discarded: [],
+    sel: null, rot: 0, act: 1,
+    mulliganDone: false, discards: 5,
+    phase: 'navigating',
+    mulliganMode: false, mulliganSel: [], discardSel: [],
+    combatPickMode: null,
+    attackSequence: [],
+    blockSel: [],
+    combatRound: 0,
+    currentEnemy: null,
+    combatEntryLast: 0,
+    bossDevourCount: 2,
+    enemyAttackValue: 0,
+    piecesUsedThisCombat: [],
+    enemies: [],
+    combatsCompletedThisAct: 0,
+    comboWindow: null,
+    activeComboLink: null,
+    mapFeatures: null,
+    usedReplenish: new Set(),
+    usedModifiers: new Set(),
+    usedGates: new Set(),
+    doorRewardPool: [],
+    overlayPhase: null,
+    overlayData: {},
+    combatLog: [], lastPlayedPiece: null,
+    // Dark map
+    revealed: new Set(),
+    obstacles: [],
+    emptyTileStreak: 0,
+    forcedObstacleNext: false,
+    revealWindowCount: 0,
+    revealWindowNonNeutral: 0,
+    // Fusion
+    fuseSel: [-1, -1],
+    fuseRots: [0, 0],
+  };
+  initAct();
+  render();
+}
+
+function makeDeck() {
+  const d = [];
+  for (let a = 0; a <= 6; a++)
+    for (let b = a; b <= 6; b++)
+      d.push({ values: [a, b], degraded: false, isMultiplier: false });
+  return d;
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+function shuffle_ret(arr) { shuffle(arr); return arr; }
+
+function drawPieces(deck, n) {
+  const out = [];
+  for (let i = 0; i < Math.min(n, deck.length); i++) {
+    const p = deck.pop();
+    out.push({ values: [...p.values], degraded: p.degraded, isMultiplier: p.isMultiplier || false, rot: Math.random() < 0.5 ? 0 : 180 });
+  }
+  return out;
+}
+
+// ── ENEMIES ───────────────────────────────────────────────────────────────────
+function pickEnemy(act) {
+  const pool = getActPool(act);
+  let candidates;
+  if (G.combatsCompletedThisAct >= 2) {
+    candidates = [
+      ...pool.normal.map(e => ({ ...e, _w: e.weight })),
+      ...pool.elite.map(e => ({ ...e, _w: e.weight * 2 })),
+    ];
+  } else {
+    candidates = pool.normal.map(e => ({ ...e, _w: e.weight }));
+  }
+  const total = candidates.reduce((s, c) => s + c._w, 0);
+  let r = Math.random() * total;
+  for (const c of candidates) {
+    r -= c._w;
+    if (r <= 0) return { id: c.id, name: c.name, hp: c.hp, maxHp: c.hp, isBoss: false };
+  }
+  const last = candidates[candidates.length - 1];
+  return { id: last.id, name: last.name, hp: last.hp, maxHp: last.hp, isBoss: false };
+}
+
+// ── DARK MAP HELPERS ──────────────────────────────────────────────────────────
+function isAlwaysVisible(x, y) {
+  if (!G.mapFeatures) return false;
+  const k = `${x},${y}`;
+  return G.mapFeatures.replenish.some(r => `${r.x},${r.y}` === k) ||
+         G.mapFeatures.buchaGates.some(g => `${g.x},${g.y}` === k);
+}
+
+function isRevealedOrVisible(x, y) {
+  if (y === 0) return true;
+  if (`${x},${y}` in G.path) return true;
+  if (x === G.pos.x && y === G.pos.y) return true;
+  return G.revealed.has(`${x},${y}`) || isAlwaysVisible(x, y);
+}
+
+function getObstacleAt(x, y) {
+  return G.obstacles.find(o => o.x === x && o.y === y) || null;
+}
+
+function isNonNeutralTile(x, y) {
+  if (G.enemies.some(e => e.pos.x === x && e.pos.y === y)) return true;
+  if (G.obstacles.some(o => o.x === x && o.y === y)) return true;
+  if (!G.mapFeatures) return false;
+  if (G.mapFeatures.modifiers.some(m => m.x === x && m.y === y)) return true;
+  if (G.mapFeatures.replenish.some(r => r.x === x && r.y === y)) return true;
+  if (G.mapFeatures.buchaGates.some(g => g.x === x && g.y === y)) return true;
+  return false;
+}
+
+// ── RADAR ─────────────────────────────────────────────────────────────────────
+function getRadarOffsets(movDir) {
+  if (movDir === 'up')    return [[0,-1],[1,-1],[1,0],[-1,0],[-1,-1]];
+  if (movDir === 'right') return [[1,0],[1,1],[0,1],[0,-1],[1,-1]];
+  if (movDir === 'left')  return [[-1,0],[-1,1],[0,1],[0,-1],[-1,-1]];
+  return [[0,-1],[1,-1],[1,0],[-1,0],[-1,-1]];
+}
+
+function radarReveal(np, n, movDir) {
+  if (n < 1) n = 1;
+  const offsets = getRadarOffsets(movDir);
+  let counted = 0;
+
+  for (const [dx, dy] of offsets) {
+    if (counted >= n) break;
+    const rx = ((np.x + dx) % 10 + 10) % 10;
+    const ry = np.y + dy;
+    if (ry < 0 || ry >= 10) continue;
+    counted++;
+    const rk = `${rx},${ry}`;
+    const alreadyVis = G.revealed.has(rk) || isAlwaysVisible(rx, ry);
+    if (!alreadyVis) {
+      if (G.forcedObstacleNext && !isNonNeutralTile(rx, ry) && ry >= 2 && ry <= 8) {
+        const type = Math.random() < 0.5 ? 'solid' : 'req';
+        const obs  = { x: rx, y: ry, type, reqNum: type === 'req' ? 1 + Math.floor(Math.random() * 6) : 0 };
+        if (validateObstaclePlacement([...G.obstacles, obs])) G.obstacles.push(obs);
+      }
+      if (G.forcedObstacleNext) G.forcedObstacleNext = false;
+
+      G.revealed.add(rk);
+      G.revealWindowCount++;
+      if (isNonNeutralTile(rx, ry)) G.revealWindowNonNeutral++;
+
+      if (G.revealWindowCount >= 5) {
+        if (G.revealWindowNonNeutral < 2 && !isNonNeutralTile(rx, ry) && ry >= 2 && ry <= 8)
+          G.mapFeatures.modifiers.push({ x: rx, y: ry });
+        G.revealWindowCount = 0;
+        G.revealWindowNonNeutral = 0;
+      }
+    }
+  }
+}
+
+// ── CHECK DECK EMPTY ──────────────────────────────────────────────────────────
+function checkDeckEmpty() {
+  if (G.deck.length === 0 && G.hand.length === 0) {
+    G.phase = 'game_over';
+    addLog('Deck e mão vazios! Derrota.', 'threat');
+    render();
+    msg('Sem peças! Derrota.');
+    return true;
+  }
+  return false;
+}
+
+// ── RULES ─────────────────────────────────────────────────────────────────────
+function direction(rot) {
+  if (rot === 90) return 'right'; if (rot === 270) return 'left'; return 'up';
+}
+function effectiveCombatLast() {
+  if (G.phase === 'combat' && G.attackSequence.length > 0) {
+    const last = G.attackSequence[G.attackSequence.length - 1];
+    return freeVal(last.piece.values, last.rot);
+  }
+  return G.last;
+}
+function canPlay(piece, rot) {
+  if (Object.keys(G.path).length === 0 && G.phase === 'navigating') return true;
+  const last = effectiveCombatLast();
+  const [a, b] = piece.values;
+  if (rot === 0)   return a === last;
+  if (rot === 180) return b === last;
+  return a === last || b === last;
+}
+function canPlayAny(piece) {
+  if (Object.keys(G.path).length === 0 && G.phase === 'navigating') return true;
+  const last = effectiveCombatLast();
+  const [a, b] = piece.values; return a === last || b === last;
+}
+
+function addToAttackSeq(free) {
+  if (G.sel === null || G.phase !== 'combat') return;
+  const piece = G.hand[G.sel];
+  if (G.blockSel.includes(G.sel)) { msg('Peça já está no bloqueio!'); return; }
+  if (piece._inSeq) return;
+  if (!free && !canPlay(piece, G.rot)) {
+    msg(`Peça não conecta com ${effectiveCombatLast()}!`); return;
+  }
+  piece._inSeq = true;
+  G.attackSequence.push({ piece, rot: G.rot });
+  G.sel = null; G.rot = 0;
+  render();
+}
+
+function removeLastFromSeq() {
+  if (G.attackSequence.length === 0) return;
+  const { piece } = G.attackSequence.pop();
+  delete piece._inSeq;
+  render();
+}
+
+function attackSeqDamage() {
+  return G.attackSequence.reduce((s, { piece }) => s + pieceValue(piece), 0);
+}
+function freeVal(values, rot) {
+  const [a, b] = values;
+  if (rot === 0)   return b; if (rot === 180) return a;
+  return a === G.last ? b : a;
+}
+function tileDisplay(values, rot, last) {
+  const [a, b] = values;
+  const cv = rot === 0 ? a : rot === 180 ? b : (a === last ? a : b);
+  const fv = rot === 0 ? b : rot === 180 ? a : (a === last ? b : a);
+  if (rot === 90)  return { v1: cv, v2: fv };
+  if (rot === 270) return { v1: fv, v2: cv };
+  return { v1: fv, v2: cv };
+}
+function newPos(pos, rot) {
+  let { x, y } = pos;
+  if (direction(rot) === 'up')         y -= 1;
+  else if (direction(rot) === 'right') x = (x + 1) % 10;
+  else                                 x = (x + 9) % 10;
+  return { x, y };
+}
+function key(p) { return `${p.x},${p.y}`; }
+
+// ── COMBO / LINK ──────────────────────────────────────────────────────────────
+function checkCombo(piece) {
+  const isDouble = piece.values[0] === piece.values[1];
+  if (isDouble) {
+    const dv = piece.values[0];
+    if (G.comboWindow !== null) {
+      if (G.comboWindow.pieces.length === G.comboWindow.targetLength) {
+        const bonus = G.comboWindow.pieces.reduce((s, p) => s + p.values[0] + p.values[1], 0);
+        G.activeComboLink = { triggerNumber: dv, bonus };
+        addLog(`Link! Gatilho: ${dv}, bônus: ${bonus}.`, 'shield');
+      } else {
+        addLog(`Janela descartada (${G.comboWindow.pieces.length}/${G.comboWindow.targetLength}).`);
+      }
+    }
+    G.comboWindow = { targetLength: dv, pieces: [] };
+    queueTutorial(5);
+  } else {
+    if (G.comboWindow !== null) {
+      G.comboWindow.pieces.push({ values: [...piece.values] });
+    }
+  }
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+function selectPiece(i) {
+  if (G.mulliganMode || G.combatPickMode !== null) return;
+  if (G.phase === 'combat' && G.combatPickMode === 'blockSel') return;
+  if (G.phase !== 'navigating' && G.phase !== 'combat') return;
+  if (G.overlayPhase) return;
+  // Tutorial 1: first piece selection
+  if (G.phase === 'navigating' && Object.keys(G.path).length === 0) queueTutorial(1);
+  if (G.sel === i) { G.sel = null; render(); return; }
+  G.sel = i;
+  const piece = G.hand[i];
+  const valid = [0, 90, 180, 270].find(r => canPlay(piece, r));
+  G.rot = valid !== undefined ? valid : piece.rot;
+  render();
+}
+
+function setRot(r) { G.rot = r; render(); }
+
+function playPiece() {
+  if (G.sel === null || G.phase !== 'navigating') return;
+  const piece = G.hand[G.sel];
+  if (!canPlay(piece, G.rot)) { msg('Peça não conecta com ' + G.last + '!'); return; }
+  const np = newPos(G.pos, G.rot);
+  const movDir = direction(G.rot);
+  if (np.y < 0) { msg('Fora do grid!'); return; }
+  if (key(np) in G.path) { msg('Tile já ocupado!'); return; }
+
+  const cellKey = `${np.x},${np.y}`;
+
+  // Obstacle check (before movement)
+  const obstacle = getObstacleAt(np.x, np.y);
+  if (obstacle) {
+    if (obstacle.type === 'solid') {
+      msg('🧱 Bloqueio sólido! Não pode entrar neste tile.');
+      return;
+    }
+    if (obstacle.type === 'req') {
+      const [oa, ob2] = piece.values;
+      if (oa !== obstacle.reqNum && ob2 !== obstacle.reqNum) {
+        msg(`🔒 Requerimento: extremidade ${obstacle.reqNum} necessária para passar!`);
+        return;
+      }
+    }
+  }
+
+  const free = freeVal(piece.values, G.rot);
+  const disp = tileDisplay(piece.values, G.rot, G.last);
+
+  G.hand.splice(G.sel, 1);
+  G.used.push(piece);
+  G.path[cellKey] = { rot: G.rot, v1: disp.v1, v2: disp.v2, degraded: piece.degraded, isMultiplier: piece.isMultiplier };
+  G.hand = [...G.hand, ...drawPieces(G.deck, 1)];
+  G.pos = np; G.last = free;
+  G.lastPlayedPiece = { rot: G.rot, v1: disp.v1, v2: disp.v2, degraded: piece.degraded, isMultiplier: piece.isMultiplier };
+  addLog(`Jogou [${disp.v1}|${disp.v2}] → último: ${free}`);
+
+  // Remove passed req obstacle
+  if (obstacle && obstacle.type === 'req') {
+    const oidx = G.obstacles.indexOf(obstacle);
+    if (oidx >= 0) G.obstacles.splice(oidx, 1);
+    addLog('🔒 Requisito cumprido — obstáculo removido.', 'shield');
+  }
+
+  // Reveal player's tile + radar
+  G.revealed.add(cellKey);
+  radarReveal(np, free, movDir);
+
+  // Empty tile streak for obstacle guarantee
+  const gateTile = G.mapFeatures.buchaGates.find(
+    g => g.x === np.x && g.y === np.y && !G.usedGates.has(cellKey)
+  );
+  const hasAnyEvent = !!(
+    gateTile ||
+    (!G.usedReplenish.has(cellKey) && G.mapFeatures.replenish.some(r => `${r.x},${r.y}` === cellKey)) ||
+    (!G.usedModifiers.has(cellKey) && G.mapFeatures.modifiers.some(m => `${m.x},${m.y}` === cellKey)) ||
+    G.enemies.some(e => e.pos.x === np.x && e.pos.y === np.y)
+  );
+  if (hasAnyEvent) {
+    G.emptyTileStreak = 0;
+    G.forcedObstacleNext = false;
+  } else {
+    G.emptyTileStreak++;
+    if (G.emptyTileStreak >= 2) G.forcedObstacleNext = true;
+  }
+
+  // Tutorial 2 & 3
+  const pathLen = Object.keys(G.path).length;
+  if (pathLen === 1) queueTutorial(2);
+  else if (pathLen === 2) queueTutorial(3);
+
+  // Combo link consumption
+  let comboBonus = 0;
+  if (G.activeComboLink &&
+      (piece.values[0] === G.activeComboLink.triggerNumber ||
+       piece.values[1] === G.activeComboLink.triggerNumber)) {
+    comboBonus = G.activeComboLink.bonus;
+    G.activeComboLink = null;
+    addLog(`Combo na entrada! +${comboBonus} bônus.`, 'shield');
+  }
+  checkCombo(piece);
+  G.sel = null; G.rot = 0; msg('');
+
+  // Gate key popup (no longer blocks entry — just asks to use bucha)
+  if (gateTile) {
+    G.overlayPhase = 'gate_key';
+    G.overlayData = {
+      title: `🚪 Porta — Bucha [${gateTile.requiredDouble}|${gateTile.requiredDouble}]`,
+      gate: gateTile,
+      cellKey,
+      selected: -1,
+    };
+    addLog(`🚪 Porta [${gateTile.requiredDouble}|${gateTile.requiredDouble}] encontrada!`);
+    render(); return;
+  }
+
+  // Replenishment tile
+  if (!G.usedReplenish.has(cellKey) &&
+      G.mapFeatures.replenish.some(r => `${r.x},${r.y}` === cellKey)) {
+    G.usedReplenish.add(cellKey);
+    G.overlayPhase = 'replenish_draft';
+    G.overlayData = {
+      draft: generateDraft(5),
+      selected: [],
+      pickCount: 2,
+      title: '♻ Tile de Reposição — Escolha 2 peças',
+    };
+    addLog('Tile de reposição! Escolha 2 peças do draft.', 'shield');
+    render(); return;
+  }
+
+  // Modifier tile
+  if (!G.usedModifiers.has(cellKey) &&
+      G.mapFeatures.modifiers.some(m => `${m.x},${m.y}` === cellKey)) {
+    G.usedModifiers.add(cellKey);
+    const buffType = Math.random() < 0.5 ? 'A' : 'B';
+    G.overlayPhase = 'buff_pick';
+    G.overlayData = {
+      piecesNeeded: buffType === 'A' ? 1 : 2,
+      buffAmount:   buffType === 'A' ? 2 : 1,
+      buffType,
+      selected: [],
+      title: buffType === 'A' ? '✨ Modificador: +2/+2 em 1 peça' : '✨ Modificador: +1/+1 em 2 peças',
+    };
+    addLog(`Tile de modificador! Buff ${buffType === 'A' ? '+2/+2' : '+1/+1'}.`, 'shield');
+    render(); return;
+  }
+
+  // Enemy collision
+  const hitEnemy = G.enemies.find(e => e.pos.x === np.x && e.pos.y === np.y);
+  if (hitEnemy) {
+    const entryDamage = pieceValue(piece) + comboBonus;
+    startCombat(hitEnemy, entryDamage);
+    return;
+  }
+
+  if (np.y === 0) { G.phase = 'act_end'; render(); return; }
+  if (checkDeckEmpty()) return;
+  render();
+}
+
+// ── DOOR REWARD ───────────────────────────────────────────────────────────────
+function openDoorReward(reward) {
+  if (reward === 'restock') {
+    G.overlayPhase = 'replenish_draft';
+    G.overlayData = {
+      draft: generateDraft(5),
+      selected: [],
+      pickCount: 3,
+      title: '🚪 Restock Especial — Escolha 3 peças',
+    };
+  } else if (reward === 'buff') {
+    const buffType = Math.random() < 0.5 ? 'A' : 'B';
+    G.overlayPhase = 'buff_pick';
+    G.overlayData = {
+      piecesNeeded: buffType === 'A' ? 1 : 2,
+      buffAmount:   buffType === 'A' ? 2 : 1,
+      buffType,
+      selected: [],
+      title: buffType === 'A' ? '🚪 Recompensa: +2/+2 em 1 peça' : '🚪 Recompensa: +1/+1 em 2 peças',
+    };
+  } else {
+    G.overlayPhase = 'mult_pick';
+    G.overlayData = { selected: -1, title: '🚪 Recompensa: Multiplicador — Escolha 1 peça' };
+  }
+  render();
+}
+
+// ── COMBAT ────────────────────────────────────────────────────────────────────
+function computeAttackValue() {
+  return 3 + G.bossDevourCount + Math.floor(Math.random() * 4);
+}
+
+function startCombat(enemy, entryDamage) {
+  G.phase = 'combat';
+  G.currentEnemy = enemy;
+  G.combatEntryLast = G.last;
+  G.combatRound = 1;
+  G.bossDevourCount = 2;
+  G.piecesUsedThisCombat = [];
+  clearTurnState();
+
+  enemy.hp = Math.max(0, enemy.hp - entryDamage);
+  addLog(`${enemy.isBoss ? '👾 Boss' : '⚔ Inimigo'} ${enemy.name}! Entrada: ${entryDamage} dano.`, 'fresh');
+
+  queueTutorial(4);
+
+  if (enemy.hp <= 0) { endCombat(); return; }
+
+  G.enemyAttackValue = computeAttackValue();
+  render();
+  msg(`Combate com ${enemy.name}! Dano inicial: ${entryDamage}.`);
+}
+
+function endCombat() {
+  const wasBoss   = G.currentEnemy.isBoss;
+  const name      = G.currentEnemy.name;
+  const drawCount = G.piecesUsedThisCombat.length;
+
+  if (drawCount > 0) {
+    G.deck.push(...G.piecesUsedThisCombat.map(p => ({ values: [...p.values], degraded: p.degraded, isMultiplier: p.isMultiplier || false })));
+    shuffle(G.deck);
+    G.piecesUsedThisCombat = [];
+  }
+
+  const idx = G.enemies.indexOf(G.currentEnemy);
+  if (idx >= 0) G.enemies.splice(idx, 1);
+
+  G.combatsCompletedThisAct++;
+  G.currentEnemy = null;
+  G.last = G.combatEntryLast;
+  clearTurnState();
+  addLog(`${name} derrotado!`, 'shield');
+
+  if (drawCount > 0) {
+    const drawn = drawPieces(G.deck, drawCount);
+    G.hand.push(...drawn);
+    addLog(`Pós-combate: +${drawn.length} peça(s) compradas.`, 'shield');
+  }
+
+  if (wasBoss) { G.phase = 'act_end'; render(); return; }
+  G.phase = 'navigating';
+  render();
+}
+
+function toggleBlockSel(i) {
+  if (G.hand[i]._inSeq) { msg('Peça já está no ataque!'); return; }
+  const idx = G.blockSel.indexOf(i);
+  if (idx >= 0) G.blockSel.splice(idx, 1);
+  else G.blockSel.push(i);
+  render();
+}
+
+function passTurn() {
+  if (G.phase !== 'combat') return;
+  const logParts = [];
+
+  if (G.attackSequence.length > 0) {
+    let totalDamage = attackSeqDamage();
+    for (const { piece } of G.attackSequence) {
+      if (G.activeComboLink &&
+          (piece.values[0] === G.activeComboLink.triggerNumber ||
+           piece.values[1] === G.activeComboLink.triggerNumber)) {
+        totalDamage += G.activeComboLink.bonus;
+        logParts.push(`Combo! +${G.activeComboLink.bonus} bônus.`);
+        G.activeComboLink = null;
+        break;
+      }
+    }
+
+    const lastSeq = G.attackSequence[G.attackSequence.length - 1];
+    G.lastPlayedPiece = handTile(lastSeq.piece, lastSeq.rot);
+    G.last = freeVal(lastSeq.piece.values, lastSeq.rot);
+
+    const blockPieces = G.blockSel.map(i => G.hand[i]);
+    G.hand = G.hand.filter(p => !p._inSeq);
+    G.blockSel = blockPieces.map(p => G.hand.indexOf(p)).filter(i => i >= 0);
+    G.attackSequence.forEach(({ piece }) => {
+      delete piece._inSeq;
+      G.piecesUsedThisCombat.push(piece);
+    });
+    G.attackSequence = [];
+
+    G.currentEnemy.hp = Math.max(0, G.currentEnemy.hp - totalDamage);
+    logParts.push(`Ataque (${G.piecesUsedThisCombat.length} peças): ${totalDamage} dano.`);
+
+    if (G.currentEnemy.hp <= 0) {
+      addLog(logParts.join(' '), 'fresh');
+      endCombat();
+      return;
+    }
+  }
+
+  const blockSum = G.blockSel.reduce((s, i) => s + pieceValue(G.hand[i]), 0);
+  const blocked  = G.blockSel.length > 0 && blockSum === G.enemyAttackValue;
+
+  if (G.blockSel.length > 0) {
+    const sorted = [...G.blockSel].sort((a, b) => b - a);
+    sorted.forEach(i => { G.discarded.push(G.hand[i]); G.hand.splice(i, 1); });
+    G.blockSel = [];
+    if (blocked) {
+      logParts.push(`Bloqueio! ${blockSum} = ${G.enemyAttackValue}. Ataque negado.`);
+    } else {
+      logParts.push(`Bloqueio falhou (${blockSum} ≠ ${G.enemyAttackValue}). Peças consumidas.`);
+    }
+  }
+
+  if (!blocked) {
+    const actual = Math.min(G.bossDevourCount, G.deck.length);
+    if (actual > 0) {
+      G.deck.splice(G.deck.length - actual, actual);
+      logParts.push(`${G.currentEnemy.name} devorou ${actual} peça(s).`);
+    } else {
+      logParts.push(`${G.currentEnemy.name} tentou devorar — deck vazio!`);
+    }
+    if (checkDeckEmpty()) { addLog(logParts.join(' '), 'threat'); return; }
+  }
+
+  if (Math.random() < ENEMY_DEGRADE_CHANCE && G.deck.length > 0) {
+    const idx = Math.floor(Math.random() * G.deck.length);
+    G.deck[idx].values[0] = Math.max(0, G.deck[idx].values[0] - 1);
+    G.deck[idx].values[1] = Math.max(0, G.deck[idx].values[1] - 1);
+    G.deck[idx].degraded = true;
+    logParts.push(`Degradação! 1 peça corrompida no deck.`);
+  }
+
+  G.bossDevourCount++;
+  G.combatRound++;
+  clearTurnState();
+  addLog(logParts.join(' ') || 'Turno passado.', blocked ? 'shield' : 'normal');
+
+  if (checkDeckEmpty()) return;
+
+  G.hand = [...G.hand, ...drawPieces(G.deck, 1)];
+  G.enemyAttackValue = computeAttackValue();
+  render();
+}
+
+function clearTurnState() {
+  G.attackSequence.forEach(({ piece }) => delete piece._inSeq);
+  G.attackSequence = [];
+  G.blockSel = []; G.combatPickMode = null; G.sel = null; G.rot = 0;
+}
+
+function addLog(text, type = 'normal') {
+  G.combatLog.unshift({ text, type });
+  if (G.combatLog.length > 12) G.combatLog.pop();
+}
+
+// ── MULLIGAN ──────────────────────────────────────────────────────────────────
+function startMulligan() {
+  if (G.mulliganDone || G.mulliganMode || G.phase !== 'navigating') return;
+  G.mulliganMode = true; G.mulliganSel = []; G.sel = null; render();
+}
+function toggleMulliganSel(i) {
+  const idx = G.mulliganSel.indexOf(i);
+  if (idx >= 0) G.mulliganSel.splice(idx, 1);
+  else if (G.mulliganSel.length < 5) G.mulliganSel.push(i);
+  render();
+}
+function confirmMulligan() {
+  if (G.mulliganSel.length === 0) { cancelMulligan(); return; }
+  const drawn = drawPieces(G.deck, G.mulliganSel.length);
+  const back  = G.mulliganSel.map(i => {
+    const { values, degraded, isMultiplier } = G.hand[i];
+    return { values: [...values], degraded, isMultiplier: isMultiplier || false };
+  });
+  G.hand = G.hand.filter((_, i) => !G.mulliganSel.includes(i));
+  G.hand = [...G.hand, ...drawn];
+  G.deck.push(...back); shuffle(G.deck);
+  G.mulliganDone = true; G.mulliganMode = false; G.mulliganSel = [];
+  msg('Mulligan feito!'); render();
+}
+function cancelMulligan() { G.mulliganMode = false; G.mulliganSel = []; render(); }
+
+// ── DISCARD (navigation) ──────────────────────────────────────────────────────
+function startDiscard() {
+  if (G.discards <= 0 || G.phase !== 'navigating' || G.mulliganMode) return;
+  G.phase = 'selecting_discard'; G.discardSel = []; G.sel = null; render();
+}
+function toggleDiscardSel(i) {
+  const idx = G.discardSel.indexOf(i);
+  if (idx >= 0) G.discardSel.splice(idx, 1);
+  else if (G.discardSel.length < 4) G.discardSel.push(i);
+  render();
+}
+function confirmDiscard() {
+  if (G.discardSel.length === 0) { cancelDiscard(); return; }
+  const pieces = G.discardSel.map(i => G.hand[i]);
+  G.hand = G.hand.filter((_, i) => !G.discardSel.includes(i));
+  G.hand = [...G.hand, ...drawPieces(G.deck, pieces.length)];
+  G.discarded.push(...pieces); G.discards -= 1;
+  G.phase = 'navigating'; G.discardSel = [];
+  msg(`Descartado! Restam ${G.discards} uso(s).`); render();
+}
+function cancelDiscard() { G.phase = 'navigating'; G.discardSel = []; render(); }
+
+// ── PIECE FUSION ──────────────────────────────────────────────────────────────
+function openFuseUI() {
+  const inBlockMode = G.phase === 'combat' && G.combatPickMode === 'blockSel';
+  G.overlayPhase = 'fuse_pick';
+  G.overlayData = {
+    title: inBlockMode ? '🔗 Fusão — Compor Bloqueio' : '🔗 Fusão de Peças',
+    sel: [-1, -1],
+    rots: [0, 0],
+  };
+  render();
+}
+
+function getOrientedValues(piece, rot) {
+  const [a, b] = piece.values;
+  if (rot === 0 || rot === 90) return [a, b];
+  return [b, a];
+}
+
+function computeFusion(p1, r1, p2, r2) {
+  const [a1, b1] = getOrientedValues(p1, r1);
+  const [a2, b2] = getOrientedValues(p2, r2);
+  const sumL = a1 + a2, sumR = b1 + b2;
+  return {
+    main:  [Math.min(sumL, 6), Math.min(sumR, 6)],
+    extra: (sumL > 6 || sumR > 6) ? [Math.max(0, sumL - 6), Math.max(0, sumR - 6)] : null,
+  };
+}
+
+function confirmFuse() {
+  const od = G.overlayData;
+  const [i0, i1] = od.sel;
+  if (i0 < 0 || i1 < 0) return;
+  const p0 = G.hand[i0], p1 = G.hand[i1];
+  const { main, extra } = computeFusion(p0, od.rots[0], p1, od.rots[1]);
+  const newPiece = { values: main, degraded: false, isMultiplier: false, rot: 0 };
+  [i0, i1].sort((a, b) => b - a).forEach(i => G.hand.splice(i, 1));
+  G.hand.push(newPiece);
+  if (extra) G.hand.push({ values: extra, degraded: false, isMultiplier: false, rot: 0 });
+  addLog(`Fusão: [${main[0]}|${main[1]}]${extra ? ` + sobra [${extra[0]}|${extra[1]}]` : ''}.`, 'shield');
+  closeOverlay();
+}
+
+// ── ACT RESET ─────────────────────────────────────────────────────────────────
+function nextAct() {
+  G.deck.push(...G.used.map(p => ({ values: [...p.values], degraded: p.degraded, isMultiplier: p.isMultiplier || false })));
+  shuffle(G.deck);
+  G.used = []; G.discarded = []; G.path = {};
+  G.mulliganDone = false; G.discards = 5; G.pos = { x: 5, y: 9 }; G.act += 1;
+  G.combatRound = 0; G.phase = 'navigating';
+  G.sel = null; G.rot = 0; G.mulliganMode = false; G.mulliganSel = []; G.discardSel = [];
+  G.combatPickMode = null; G.attackSequence = []; G.blockSel = [];
+  G.currentEnemy = null; G.bossDevourCount = 2; G.enemyAttackValue = 0; G.piecesUsedThisCombat = [];
+  G.comboWindow = null; G.activeComboLink = null;
+  G.usedReplenish = new Set(); G.usedModifiers = new Set(); G.usedGates = new Set();
+  G.mapFeatures = null; G.overlayPhase = null; G.overlayData = {};
+  G.revealed = new Set(); G.obstacles = [];
+  G.emptyTileStreak = 0; G.forcedObstacleNext = false;
+  G.revealWindowCount = 0; G.revealWindowNonNeutral = 0;
+  G.fuseSel = [-1, -1]; G.fuseRots = [0, 0];
+  initAct();
+  msg(`Ato ${G.act} — avante!`); render();
+}
+
+// ── MSG ───────────────────────────────────────────────────────────────────────
+let msgTimer = null;
+function msg(text) {
+  document.getElementById('msg').textContent = text;
+  clearTimeout(msgTimer);
+  if (text) msgTimer = setTimeout(() => { document.getElementById('msg').textContent = ''; }, 4000);
+}
+
+// ── OVERLAY ───────────────────────────────────────────────────────────────────
+function renderOverlay() {
+  const overlay = document.getElementById('overlay');
+  if (!G.overlayPhase || G.phase === 'game_over') {
+    overlay.classList.remove('open'); return;
+  }
+  overlay.classList.add('open');
+
+  document.getElementById('overlay-title').textContent   = G.overlayData.title || '';
+  document.getElementById('overlay-desc').textContent    = '';
+  document.getElementById('overlay-counter').textContent = '';
+  document.getElementById('overlay-pieces').innerHTML    = '';
+  document.getElementById('overlay-footer').innerHTML    = '';
+
+  if (G.overlayPhase === 'buff_pick')          renderBuffPickOverlay();
+  else if (G.overlayPhase === 'replenish_draft') renderReplenishDraftOverlay();
+  else if (G.overlayPhase === 'mult_pick')     renderMultPickOverlay();
+  else if (G.overlayPhase === 'gate_key')      renderGateKeyOverlay();
+  else if (G.overlayPhase === 'fuse_pick')     renderFuseOverlay();
+}
+
+function renderBuffPickOverlay() {
+  const od = G.overlayData;
+  const remaining = od.piecesNeeded - od.selected.length;
+  document.getElementById('overlay-desc').textContent =
+    `Escolha ${od.piecesNeeded} peça(s) da mão para aplicar +${od.buffAmount}/+${od.buffAmount}.`;
+  document.getElementById('overlay-counter').textContent =
+    remaining > 0 ? `${remaining} peça(s) restante(s)` : '✓ Pronto para confirmar!';
+  const piecesDiv = document.getElementById('overlay-pieces');
+  if (G.hand.length === 0) {
+    piecesDiv.innerHTML = '<span style="font-size:0.72rem;color:#6b7280">Mão vazia — nada a buffar.</span>';
+  } else {
+    G.hand.forEach((piece, i) => {
+      const div = document.createElement('div');
+      div.className = 'ov-piece' + (od.selected.includes(i) ? ' ov-sel' : '');
+      div.appendChild(makeDomEl(handTile(piece, piece.rot), 'lg'));
+      div.onclick = () => {
+        const idx = od.selected.indexOf(i);
+        if (idx >= 0) od.selected.splice(idx, 1);
+        else if (od.selected.length < od.piecesNeeded) od.selected.push(i);
+        render();
+      };
+      piecesDiv.appendChild(div);
+    });
+  }
+  const footer = document.getElementById('overlay-footer');
+  footer.appendChild(mkBtn('Confirmar', 'ok', confirmBuffPick,
+    od.selected.length < od.piecesNeeded && G.hand.length > 0));
+  footer.appendChild(mkBtn('Pular', 'warn', closeOverlay));
+}
+
+function confirmBuffPick() {
+  const od = G.overlayData;
+  od.selected.forEach(i => {
+    G.hand[i].values[0] += od.buffAmount;
+    G.hand[i].values[1] += od.buffAmount;
+  });
+  addLog(`Buff +${od.buffAmount}/+${od.buffAmount} aplicado em ${od.selected.length} peça(s).`, 'shield');
+  closeOverlay();
+}
+
+function renderReplenishDraftOverlay() {
+  const od = G.overlayData;
+  const remaining = od.pickCount - od.selected.length;
+  document.getElementById('overlay-desc').textContent =
+    `Escolha ${od.pickCount} peças do draft para adicionar ao deck.`;
+  document.getElementById('overlay-counter').textContent =
+    remaining > 0 ? `${remaining} escolha(s) restante(s)` : '✓ Pronto para confirmar!';
+  const piecesDiv = document.getElementById('overlay-pieces');
+  od.draft.forEach((piece, i) => {
+    const isSelected = od.selected.includes(i);
+    const isFull     = !isSelected && od.selected.length >= od.pickCount;
+    const div = document.createElement('div');
+    div.className = 'ov-piece' + (isSelected ? ' ov-sel' : '') + (isFull ? ' ov-dim' : '');
+    div.appendChild(makeDomEl({ rot: 0, v1: piece.values[1], v2: piece.values[0], degraded: false, isMultiplier: false }, 'lg'));
+    if (!isFull || isSelected) {
+      div.onclick = () => {
+        const idx = od.selected.indexOf(i);
+        if (idx >= 0) od.selected.splice(idx, 1);
+        else if (od.selected.length < od.pickCount) od.selected.push(i);
+        render();
+      };
+    }
+    piecesDiv.appendChild(div);
+  });
+  const footer = document.getElementById('overlay-footer');
+  footer.appendChild(mkBtn('Confirmar', 'ok', confirmReplenishDraft, od.selected.length < od.pickCount));
+}
+
+function confirmReplenishDraft() {
+  const od = G.overlayData;
+  const chosen = od.selected.map(i => od.draft[i]);
+  chosen.forEach(p => G.deck.push({ values: [...p.values], degraded: false, isMultiplier: false }));
+  shuffle(G.deck);
+  addLog(`Draft: +${chosen.length} peça(s) adicionadas ao deck.`, 'shield');
+  closeOverlay();
+}
+
+function renderMultPickOverlay() {
+  const od = G.overlayData;
+  document.getElementById('overlay-desc').textContent =
+    'Escolha 1 peça da mão. Ela passa a calcular dano como a × b.';
+  document.getElementById('overlay-counter').textContent =
+    od.selected === -1 ? 'Nenhuma selecionada.' : '✓ Pronto para confirmar!';
+  const piecesDiv = document.getElementById('overlay-pieces');
+  if (G.hand.length === 0) {
+    piecesDiv.innerHTML = '<span style="font-size:0.72rem;color:#6b7280">Mão vazia.</span>';
+  } else {
+    G.hand.forEach((piece, i) => {
+      const div = document.createElement('div');
+      const alreadyMult = piece.isMultiplier;
+      div.className = 'ov-piece' + (od.selected === i ? ' ov-sel' : '') + (alreadyMult ? ' ov-dim' : '');
+      div.appendChild(makeDomEl(handTile(piece, piece.rot), 'lg'));
+      if (!alreadyMult) {
+        div.onclick = () => { od.selected = od.selected === i ? -1 : i; render(); };
+      }
+      piecesDiv.appendChild(div);
+    });
+  }
+  const footer = document.getElementById('overlay-footer');
+  footer.appendChild(mkBtn('Confirmar', 'ok', confirmMultPick,
+    od.selected === -1 && G.hand.length > 0));
+  footer.appendChild(mkBtn('Pular', 'warn', closeOverlay));
+}
+
+function confirmMultPick() {
+  const od = G.overlayData;
+  if (od.selected >= 0) {
+    G.hand[od.selected].isMultiplier = true;
+    const p = G.hand[od.selected];
+    addLog(`Multiplicador: [${p.values[0]}|${p.values[1]}] agora calcula ${p.values[0]}×${p.values[1]}.`, 'shield');
+  }
+  closeOverlay();
+}
+
+// ── GATE KEY OVERLAY ──────────────────────────────────────────────────────────
+function renderGateKeyOverlay() {
+  const od = G.overlayData;
+  const reqNum = od.gate.requiredDouble;
+  const hasBucha = G.hand.some(p => p.values[0] === p.values[1] && p.values[0] === reqNum);
+
+  document.getElementById('overlay-desc').textContent =
+    hasBucha
+      ? `Você tem a bucha [${reqNum}|${reqNum}]! Selecione-a para abrir a porta e receber uma recompensa.`
+      : `Você precisaria da bucha [${reqNum}|${reqNum}] para abrir esta porta. Você não a tem agora.`;
+  document.getElementById('overlay-counter').textContent =
+    od.selected >= 0 ? '✓ Pronto para abrir!' : hasBucha ? 'Selecione a bucha na mão.' : '';
+
+  const piecesDiv = document.getElementById('overlay-pieces');
+  G.hand.forEach((piece, i) => {
+    const isMatch = piece.values[0] === piece.values[1] && piece.values[0] === reqNum;
+    const div = document.createElement('div');
+    div.className = 'ov-piece' + (od.selected === i ? ' ov-sel' : '') + (!isMatch ? ' ov-dim' : '');
+    div.appendChild(makeDomEl(handTile(piece, piece.rot), 'lg'));
+    if (isMatch) div.onclick = () => { od.selected = od.selected === i ? -1 : i; render(); };
+    piecesDiv.appendChild(div);
+  });
+
+  const footer = document.getElementById('overlay-footer');
+  footer.appendChild(mkBtn('🔑 Abrir Porta', 'ok', confirmGateKey, od.selected < 0));
+  footer.appendChild(mkBtn('Pular', 'warn', closeOverlay));
+}
+
+function confirmGateKey() {
+  const od = G.overlayData;
+  if (od.selected < 0) return;
+  const bucha = G.hand[od.selected];
+  G.hand.splice(od.selected, 1);
+  G.used.push(bucha);
+  G.usedGates.add(od.cellKey);
+  const reward = drawDoorReward();
+  addLog(`🔑 Porta aberta! Recompensa: ${reward}.`, 'shield');
+  G.overlayPhase = null;
+  G.overlayData  = {};
+  openDoorReward(reward);
+}
+
+// ── FUSION OVERLAY ────────────────────────────────────────────────────────────
+function renderFuseOverlay() {
+  const od = G.overlayData;
+  const [i0, i1] = od.sel;
+  const bothSel = i0 >= 0 && i1 >= 0;
+  document.getElementById('overlay-desc').textContent =
+    bothSel
+      ? 'Rotacione as peças e confirme a fusão.'
+      : `Selecione 2 peças da mão (${(i0 >= 0 ? 1 : 0) + (i1 >= 0 ? 1 : 0)}/2 selecionadas)`;
+
+  const piecesDiv = document.getElementById('overlay-pieces');
+  G.hand.forEach((piece, i) => {
+    const isA = i === i0, isB = i === i1;
+    const rot = isA ? od.rots[0] : isB ? od.rots[1] : piece.rot;
+    const div = document.createElement('div');
+    div.className = 'ov-piece' + (isA || isB ? ' ov-sel' : '');
+    if (isA) div.style.borderColor = '#f59e0b';
+    if (isB) div.style.borderColor = '#22d3ee';
+    div.appendChild(makeDomEl(handTile(piece, rot), 'lg'));
+    div.onclick = () => {
+      if (isA)      { od.sel[0] = -1; od.rots[0] = 0; }
+      else if (isB) { od.sel[1] = -1; od.rots[1] = 0; }
+      else if (od.sel[0] < 0) { od.sel[0] = i; od.rots[0] = piece.rot; }
+      else if (od.sel[1] < 0 && i !== od.sel[0]) { od.sel[1] = i; od.rots[1] = piece.rot; }
+      render();
+    };
+    piecesDiv.appendChild(div);
+  });
+
+  if (i0 >= 0 || i1 >= 0) {
+    const rotRow = document.createElement('div');
+    rotRow.style.cssText = 'width:100%;display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:6px;';
+    const labels = ['↑','→','↓','←'];
+    if (i0 >= 0) {
+      const lbl = document.createElement('span');
+      lbl.style.cssText = 'font-size:0.7rem;color:#f59e0b;align-self:center;'; lbl.textContent = 'Peça 1:';
+      rotRow.appendChild(lbl);
+      [0,90,180,270].forEach((r,ri) => rotRow.appendChild(
+        mkBtn(labels[ri], r === od.rots[0] ? 'active' : '', () => { od.rots[0] = r; render(); })
+      ));
+    }
+    if (i0 >= 0 && i1 >= 0) {
+      const sep = document.createElement('span');
+      sep.style.cssText = 'color:#6b7280;align-self:center;margin:0 4px;'; sep.textContent = '|';
+      rotRow.appendChild(sep);
+    }
+    if (i1 >= 0) {
+      const lbl = document.createElement('span');
+      lbl.style.cssText = 'font-size:0.7rem;color:#22d3ee;align-self:center;'; lbl.textContent = 'Peça 2:';
+      rotRow.appendChild(lbl);
+      [0,90,180,270].forEach((r,ri) => rotRow.appendChild(
+        mkBtn(labels[ri], r === od.rots[1] ? 'active' : '', () => { od.rots[1] = r; render(); })
+      ));
+    }
+    piecesDiv.appendChild(rotRow);
+  }
+
+  if (bothSel) {
+    const { main, extra } = computeFusion(G.hand[i0], od.rots[0], G.hand[i1], od.rots[1]);
+    const preview = document.createElement('div');
+    preview.style.cssText = 'width:100%;text-align:center;font-size:0.82rem;color:#93c5fd;margin-top:8px;padding:6px;background:#111827;border-radius:6px;';
+    preview.textContent = `Resultado: [${main[0]}|${main[1]}]` +
+      (extra ? `  +  sobra [${extra[0]}|${extra[1]}]` : '  (sem sobra)');
+    piecesDiv.appendChild(preview);
+  }
+
+  const footer = document.getElementById('overlay-footer');
+  footer.appendChild(mkBtn('Confirmar Fusão', 'ok', confirmFuse, !bothSel));
+  footer.appendChild(mkBtn('Cancelar', 'warn', closeOverlay));
+}
+
+function closeOverlay() {
+  G.overlayPhase = null;
+  G.overlayData  = {};
+  if (checkDeckEmpty()) return;
+  render();
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function render() { renderStats(); renderGrid(); renderHand(); renderRotBar(); renderCtrl(); renderLogPanel(); renderOverlay(); }
+
+function renderStats() {
+  document.getElementById('s-act').textContent  = G.act;
+  document.getElementById('s-deck').textContent = G.deck.length;
+  document.getElementById('s-disc').textContent = G.discards;
+  document.getElementById('s-last').textContent = G.last;
+  document.getElementById('deck-bar-fill').style.width = `${(G.deck.length / 28) * 100}%`;
+  const bs = document.getElementById('boss-stat');
+  if (G.phase === 'combat' && G.currentEnemy) {
+    bs.style.display = '';
+    document.getElementById('s-enemy-label').textContent = G.currentEnemy.name + (G.currentEnemy.isBoss ? ' 👾' : '');
+    document.getElementById('s-boss-hp').textContent = `${G.currentEnemy.hp}/${G.currentEnemy.maxHp}`;
+    document.getElementById('boss-bar-fill').style.width = `${(G.currentEnemy.hp / G.currentEnemy.maxHp) * 100}%`;
+    document.getElementById('s-round').textContent = G.combatRound;
+  } else { bs.style.display = 'none'; }
+}
+
+function renderGrid() {
+  const grid = document.getElementById('grid'); grid.innerHTML = '';
+  const inCombat = G.phase === 'combat';
+  const repKeys  = new Set(G.mapFeatures.replenish.map(r => `${r.x},${r.y}`));
+  const gateMap  = new Map(G.mapFeatures.buchaGates.map(g => [`${g.x},${g.y}`, g]));
+  const modKeys  = new Set(G.mapFeatures.modifiers.map(m => `${m.x},${m.y}`));
+
+  const enemyMap = new Map();
+  if (G.phase !== 'act_end') {
+    G.enemies.forEach(e => {
+      if (!inCombat || e !== G.currentEnemy)
+        enemyMap.set(`${e.pos.x},${e.pos.y}`, e);
+    });
+  }
+
+  for (let y = 0; y < 10; y++) {
+    for (let x = 0; x < 10; x++) {
+      const cell    = document.createElement('div'); cell.className = 'cell';
+      const cellKey = `${x},${y}`;
+      if (y === 0) cell.classList.add('goal-row');
+
+      const isPlayer = G.pos.x === x && G.pos.y === y;
+      const visible  = isRevealedOrVisible(x, y);
+
+      if (!visible && !isPlayer) {
+        cell.classList.add('hidden-tile');
+        const q = document.createElement('div');
+        q.style.cssText = 'font-size:0.6rem;color:#1f2937;user-select:none;';
+        q.textContent = '?';
+        cell.appendChild(q);
+        grid.appendChild(cell);
+        continue;
+      }
+
+      const enemy      = enemyMap.get(cellKey);
+      const tile       = G.path[cellKey];
+      const obstacle   = getObstacleAt(x, y);
+      const isReplenish = repKeys.has(cellKey)  && !G.usedReplenish.has(cellKey)  && !tile && !isPlayer && !enemy;
+      const gate        = gateMap.get(cellKey);
+      const isGate      = !!gate && !G.usedGates.has(cellKey) && !tile && !isPlayer && !enemy;
+      const isModifier  = modKeys.has(cellKey)  && !G.usedModifiers.has(cellKey)  && !tile && !isPlayer && !enemy;
+      const isObstacle  = !!obstacle && !tile && !isPlayer && !enemy;
+
+      if (isPlayer)      cell.classList.add('player');
+      if (enemy?.isBoss) cell.classList.add('boss-cell');
+      else if (enemy)    cell.classList.add('enemy-cell');
+      if (isReplenish)   cell.classList.add('replenish-tile');
+      if (isGate)        cell.classList.add('bucha-gate');
+      if (isModifier)    cell.classList.add('modifier-tile');
+      if (isObstacle)    cell.classList.add(obstacle.type === 'solid' ? 'obstacle-solid' : 'obstacle-req');
+
+      if (tile) {
+        cell.classList.add('occupied');
+        if (tile.degraded) cell.classList.add('degraded-cell');
+        cell.appendChild(makeDomEl(tile, 'sm'));
+      } else if (isPlayer) {
+        const m = document.createElement('div'); m.className = 'player-marker'; cell.appendChild(m);
+      } else if (enemy?.isBoss) {
+        const b = document.createElement('div'); b.className = 'boss-marker'; b.textContent = '👾'; cell.appendChild(b);
+      } else if (enemy) {
+        const em = document.createElement('div'); em.className = 'enemy-marker';
+        em.textContent = getEnemyEmoji(enemy.id); cell.appendChild(em);
+      } else if (isReplenish) {
+        const r = document.createElement('div');
+        r.style.cssText = 'font-size:1rem;line-height:1;user-select:none;';
+        r.textContent = '♻'; cell.appendChild(r);
+      } else if (isGate) {
+        const g = document.createElement('div');
+        g.style.cssText = 'font-size:0.7rem;line-height:1.2;user-select:none;text-align:center;color:#c4b5fd;';
+        g.innerHTML = `🚪<br>${gate.requiredDouble}`; cell.appendChild(g);
+      } else if (isModifier) {
+        const m = document.createElement('div');
+        m.style.cssText = 'font-size:1rem;line-height:1;user-select:none;';
+        m.textContent = '✨'; cell.appendChild(m);
+      } else if (isObstacle) {
+        const o = document.createElement('div');
+        o.style.cssText = 'font-size:0.9rem;line-height:1.2;user-select:none;text-align:center;';
+        o.innerHTML = obstacle.type === 'solid'
+          ? '🧱'
+          : `🔒<br><span style="font-size:0.55rem;color:#c4b5fd">${obstacle.reqNum}</span>`;
+        cell.appendChild(o);
+      } else {
+        const d = document.createElement('div'); d.className = 'dot'; cell.appendChild(d);
+      }
+      grid.appendChild(cell);
+    }
+  }
+}
+
+function makeDomEl(tile, size) {
+  const { rot, v1, v2, degraded, isMultiplier } = tile;
+  const isV = rot === 0 || rot === 180;
+  const wrap = document.createElement('div');
+  wrap.className = (isV ? 'dom-v' : 'dom-h') + ' ' + size +
+    (degraded ? ' degraded' : '') + (isMultiplier ? ' mult' : '');
+  const n1 = document.createElement('div'); n1.className = 'dn'; n1.textContent = v1;
+  const dv = document.createElement('div'); dv.className = isV ? 'dh' : 'dv';
+  const n2 = document.createElement('div'); n2.className = 'dn'; n2.textContent = v2;
+  wrap.append(n1, dv, n2); return wrap;
+}
+
+function handTile(piece, rot) {
+  const [a, b] = piece.values;
+  const { degraded, isMultiplier } = piece;
+  if (rot === 0)   return { rot, v1: b, v2: a, degraded, isMultiplier };
+  if (rot === 180) return { rot, v1: a, v2: b, degraded, isMultiplier };
+  const cv = a === G.last ? a : b, fv = a === G.last ? b : a;
+  if (rot === 90)  return { rot, v1: cv, v2: fv, degraded, isMultiplier };
+  return                   { rot, v1: fv, v2: cv, degraded, isMultiplier };
+}
+
+function renderHand() {
+  const handEl = document.getElementById('hand'); handEl.innerHTML = '';
+  const isMulligan   = G.mulliganMode;
+  const isNavDiscard = G.phase === 'selecting_discard';
+  const inCombat     = G.phase === 'combat';
+  const hasOverlay   = !!G.overlayPhase;
+
+  G.hand.forEach((piece, i) => {
+    const div = document.createElement('div'); div.className = 'hpiece';
+    let displayRot = piece.rot;
+    if (!hasOverlay && !inCombat && G.sel === i) displayRot = G.rot;
+    else if (!hasOverlay && inCombat && G.combatPickMode === null && !piece._inSeq && G.sel === i) displayRot = G.rot;
+    else if (inCombat && piece._inSeq) {
+      const se = G.attackSequence.find(e => e.piece === piece);
+      if (se) displayRot = se.rot;
+    }
+    div.appendChild(makeDomEl(handTile(piece, displayRot), 'lg'));
+
+    if (hasOverlay) {
+      div.classList.add('invalid');
+    } else if (isMulligan) {
+      if (G.mulliganSel.includes(i)) div.classList.add('toggle-on');
+      div.onclick = () => toggleMulliganSel(i);
+    } else if (isNavDiscard) {
+      if (G.discardSel.includes(i)) div.classList.add('toggle-on');
+      div.onclick = () => toggleDiscardSel(i);
+    } else if (inCombat) {
+      applyCombatPieceClass(div, piece, i);
+    } else {
+      if (G.sel === i)             div.classList.add('selected');
+      else if (!canPlayAny(piece)) div.classList.add('invalid');
+      div.onclick = () => selectPiece(i);
+    }
+    handEl.appendChild(div);
+  });
+}
+
+function applyCombatPieceClass(div, piece, i) {
+  const pm    = G.combatPickMode;
+  const inSeq = !!piece._inSeq;
+  const inBlk = G.blockSel.includes(i);
+  if (pm === 'blockSel') {
+    if (inSeq) { div.classList.add('attacking'); return; }
+    if (inBlk)   div.classList.add('block-sel');
+    else         div.classList.add('pick-hover');
+    div.onclick = () => toggleBlockSel(i);
+    return;
+  }
+  if (inSeq) { div.classList.add('attacking'); return; }
+  if (inBlk) { div.classList.add('block-sel'); div.onclick = () => toggleBlockSel(i); return; }
+  if (G.sel === i)             div.classList.add('selected');
+  else if (!canPlayAny(piece)) div.classList.add('invalid');
+  div.onclick = () => selectPiece(i);
+}
+
+function renderRotBar() {
+  const bar = document.getElementById('rot-bar'); bar.innerHTML = '';
+  if (G.overlayPhase) return;
+  const show = G.sel !== null && !G.mulliganMode && G.combatPickMode === null &&
+               (G.phase === 'navigating' || G.phase === 'combat');
+  if (!show) return;
+  const piece = G.hand[G.sel];
+  [{ r:0, label:'↑ Normal' },{ r:90, label:'→ Direita' },{ r:180, label:'↑ Invertida' },{ r:270, label:'← Esquerda' }]
+    .forEach(({ r, label }) => {
+      const btn = document.createElement('button'); btn.textContent = label;
+      if (G.rot === r) btn.classList.add('active');
+      btn.classList.add(canPlay(piece, r) ? 'ok' : 'bad');
+      btn.onclick = () => setRot(r); bar.appendChild(btn);
+    });
+}
+
+function renderCtrl() {
+  const bar = document.getElementById('ctrl-bar'); bar.innerHTML = '';
+
+  if (G.overlayPhase) {
+    bar.appendChild(mkNote('Resolva o evento do tile acima.', 'info')); return;
+  }
+
+  if (G.phase === 'game_over') {
+    const b = document.createElement('div'); b.className = 'game-over-banner'; b.textContent = '💀 Derrota!';
+    bar.appendChild(b); bar.appendChild(mkBtn('Reiniciar', 'bad', initGame)); return;
+  }
+  if (G.phase === 'act_end') {
+    const b = document.createElement('div'); b.className = 'act-end-banner';
+    b.textContent = `🏆 ${getActPool(G.act).boss.name} derrotado!`;
+    bar.appendChild(b); bar.appendChild(mkBtn(`Ato ${G.act + 1} →`, 'ok', nextAct)); return;
+  }
+
+  if (G.phase === 'combat') {
+    const pm       = G.combatPickMode;
+    const blockSum = G.blockSel.reduce((s, i) => s + pieceValue(G.hand[i]), 0);
+    const blockOk  = blockSum === G.enemyAttackValue;
+    const seqLen   = G.attackSequence.length;
+    const seqDmg   = attackSeqDamage();
+
+    if (pm === 'blockSel') {
+      bar.appendChild(mkNote(
+        `Bloqueio: ${blockSum} / ${G.enemyAttackValue}${blockOk ? ' ✓ exato!' : ' (precisa ser exato)'}`,
+        blockOk ? 'shield' : 'danger'));
+      bar.appendChild(mkBtn('Confirmar Bloqueio ▶', blockOk ? 'ok' : 'warn',
+        () => { G.combatPickMode = null; render(); }));
+      bar.appendChild(mkBtn('Cancelar', '',
+        () => { G.blockSel = []; G.combatPickMode = null; render(); }));
+      if (G.hand.length >= 2) bar.appendChild(mkBtn('🔗 Fundir', 'warn', openFuseUI));
+      return;
+    }
+
+    if (seqLen > 0) {
+      const comboCb = G.activeComboLink && G.attackSequence.some(({ piece }) =>
+        piece.values[0] === G.activeComboLink.triggerNumber ||
+        piece.values[1] === G.activeComboLink.triggerNumber);
+      bar.appendChild(mkNote(
+        `Sequência (${seqLen}): ${seqDmg + (comboCb ? G.activeComboLink.bonus : 0)} dano${comboCb ? ` +${G.activeComboLink.bonus} combo!` : ''}`,
+        'info'));
+      bar.appendChild(mkBtn('↩ Desfazer', 'warn', removeLastFromSeq));
+    }
+
+    if (G.sel !== null) {
+      bar.appendChild(mkBtn('+ Sequência', 'ok', () => addToAttackSeq(false), !canPlay(G.hand[G.sel], G.rot)));
+      bar.appendChild(mkBtn('Ataque Livre', '', () => addToAttackSeq(true)));
+    }
+
+    if (G.blockSel.length > 0) {
+      bar.appendChild(mkNote(
+        `Bloqueio: ${blockSum}${blockOk ? ` = ${G.enemyAttackValue} ✓` : ` / ${G.enemyAttackValue} ✗`}`,
+        blockOk ? 'shield' : 'danger'));
+      bar.appendChild(mkBtn('Editar Bloqueio', 'warn', () => { G.combatPickMode = 'blockSel'; render(); }));
+    } else {
+      bar.appendChild(mkNote(
+        `⚔ ${G.currentEnemy ? G.currentEnemy.name : 'Inimigo'} anunciou ${G.enemyAttackValue} — some exato p/ bloquear`,
+        'danger'));
+      bar.appendChild(mkBtn('Bloquear ▶', 'warn', () => { G.combatPickMode = 'blockSel'; G.sel = null; render(); }));
+    }
+
+    bar.appendChild(mkBtn('Passar Turno ▶', 'ok', passTurn)); return;
+  }
+
+  if (G.mulliganMode) {
+    bar.appendChild(mkNote(`Mulligan: escolha 1–5 peças (${G.mulliganSel.length} sel.)`));
+    bar.appendChild(mkBtn('Confirmar', 'ok', confirmMulligan, G.mulliganSel.length === 0));
+    bar.appendChild(mkBtn('Cancelar', '', cancelMulligan)); return;
+  }
+  if (G.phase === 'selecting_discard') {
+    bar.appendChild(mkNote(`Descartar até 4 peças (${G.discardSel.length} sel.) — permanente`));
+    bar.appendChild(mkBtn('Confirmar', 'bad', confirmDiscard, G.discardSel.length === 0));
+    bar.appendChild(mkBtn('Cancelar', '', cancelDiscard)); return;
+  }
+
+  if (G.sel !== null) {
+    const piece = G.hand[G.sel];
+    bar.appendChild(mkBtn('Jogar ▶', 'ok', playPiece, !canPlay(piece, G.rot)));
+  }
+  if (!G.mulliganDone) bar.appendChild(mkBtn('Mulligan', 'warn', startMulligan));
+  if (G.discards > 0)  bar.appendChild(mkBtn(`Descartar (${G.discards})`, 'bad', startDiscard));
+  if (G.hand.length >= 2) bar.appendChild(mkBtn('🔗 Fundir', '', openFuseUI));
+}
+
+function renderLogPanel() {
+  const lpw = document.getElementById('last-piece-wrap'); lpw.innerHTML = '';
+  if (G.lastPlayedPiece) {
+    lpw.appendChild(makeDomEl(G.lastPlayedPiece, 'xl'));
+  } else {
+    const ph = document.createElement('div');
+    ph.style.cssText = 'font-size:0.7rem;color:#374151;text-align:center;'; ph.textContent = '—';
+    lpw.appendChild(ph);
+  }
+  const bpt = document.getElementById('boss-prev-title');
+  const bpb = document.getElementById('boss-preview-box');
+  if (G.phase === 'combat' && G.currentEnemy) {
+    bpt.style.display = ''; bpb.classList.add('visible');
+    document.getElementById('boss-preview-name').textContent =
+      `${G.currentEnemy.isBoss ? '👾' : '⚔'} ${G.currentEnemy.name} — devora ${G.bossDevourCount}`;
+    document.getElementById('boss-preview-detail').textContent =
+      `Ataque: ${G.enemyAttackValue} — some exato p/ bloquear`;
+  } else {
+    bpt.style.display = 'none'; bpb.classList.remove('visible');
+  }
+  const cb = document.getElementById('combo-box');
+  const hasLink = !!G.activeComboLink, hasWin = !!G.comboWindow;
+  if (hasLink || hasWin) {
+    cb.classList.add('visible');
+    const ll = document.getElementById('combo-link-line');
+    const wl = document.getElementById('combo-win-line');
+    ll.style.display = hasLink ? '' : 'none';
+    if (hasLink) ll.textContent = `Link ativo — gatilho: ${G.activeComboLink.triggerNumber}, bônus: ${G.activeComboLink.bonus}`;
+    wl.style.display = hasWin ? '' : 'none';
+    if (hasWin) wl.textContent = `Janela: ${G.comboWindow.pieces.length}/${G.comboWindow.targetLength}`;
+  } else { cb.classList.remove('visible'); }
+  const logEl = document.getElementById('combat-log-entries'); logEl.innerHTML = '';
+  if (G.combatLog.length === 0) {
+    const e = document.createElement('div'); e.className = 'log-entry'; e.textContent = 'Nenhum evento.';
+    logEl.appendChild(e);
+  } else {
+    G.combatLog.forEach(({ text, type }, i) => {
+      const div = document.createElement('div'); div.className = 'log-entry';
+      if (i === 0)           div.classList.add('fresh');
+      if (type === 'threat') div.classList.add('threat');
+      if (type === 'shield') div.classList.add('shield');
+      div.textContent = text; logEl.appendChild(div);
+    });
+  }
+}
+
+function mkBtn(label, cls, onclick, disabled = false) {
+  const btn = document.createElement('button'); btn.textContent = label;
+  if (cls) btn.classList.add(cls); if (disabled) btn.disabled = true;
+  btn.onclick = onclick; return btn;
+}
+function mkNote(text, cls = '') {
+  const d = document.createElement('div');
+  d.className = 'phase-note' + (cls ? ' ' + cls : '');
+  d.textContent = text; return d;
+}
+
+// ── DECK VIEWER ───────────────────────────────────────────────────────────────
+function showDeckViewer() {
+  const piecesEl = document.getElementById('deck-viewer-pieces');
+  const countEl  = document.getElementById('deck-viewer-count');
+  piecesEl.innerHTML = '';
+  countEl.textContent = `${G.deck.length} peças`;
+  [...G.deck].reverse().forEach((piece, i) => {
+    const tile = { rot: 0, v1: piece.values[1], v2: piece.values[0], degraded: piece.degraded, isMultiplier: piece.isMultiplier || false };
+    const wrap = document.createElement('div');
+    wrap.title = `#${G.deck.length - i} (topo)`;
+    wrap.appendChild(makeDomEl(tile, 'sm'));
+    piecesEl.appendChild(wrap);
+  });
+  document.getElementById('deck-viewer').classList.add('open');
+}
+function hideDeckViewer() {
+  document.getElementById('deck-viewer').classList.remove('open');
+}
+
+// ── BOOT ──────────────────────────────────────────────────────────────────────
+initGame();
+</script>
+</body>
+</html>
